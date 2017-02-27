@@ -1,0 +1,208 @@
+JOB 1: Conversion of JSON file format to CSV file format.
+Tool used: Apache Pig.
+
+Step 1: Loading JSON file into Pig Grunt Shell in MapReduce mode.
+
+loadjson = load '/project/sample.dat' using JsonLoader('Age:INT, Education:chararray, MaritalStatus:chararray, Gender:chararray, TaxFilerStatus:chararray, Income:DOUBLE, Parents:chararray, CountryOfBirth:chararray, Citizenship:chararray, WeeksWorked:INT');
+
+Step 2: Storing Converted csv file into HDFS
+
+	store loadjson into '/project/pigdata1' using PigStorage (',');
+
+
+RAW INPUT:
+
+{"Age": 73,"Education": " High school graduate","MaritalStatus": " Widowed","Gender": " Female","TaxFilerStatus": " Nonfiler","Income":  1700.09,"Parents": " Not in universe","CountryOfBirth": " United-States","Citizenship": " Native- Born in the United States","WeeksWorked":  0}
+
+SAMPLE OUTPUT:
+
+73, High school graduate, Widowed, Female, Nonfiler,1700.09, Not in universe, United-States, Native- Born in the United States,0
+JOB 2: Finding number of adults, middle aged and senior citizen to find ages between 14 to 64, where government can create employment.
+Tool used: Apache Pig.
+
+Step 1: Loading the data from HDFS in mapreduce mode.
+	
+employment = load '/project/pigdata1/part-m-00000' using PigStorage(',') as (Age:int, Education:chararray, MaritalStatus:chararray, Gender:chararray, TaxFilerStatus:chararray, Income:double, Parents:chararray, CountryOfBirth:chararray, Citizenship:chararray, WeeksWorked:int);
+
+Step 2: Creating partition bags based on ages between 14 and 65 from employment bag.
+	
+split employment into employment1 if Age<14, employment2 if (14<=Age and Age<=65), employment3 if Age>65;
+
+Step 3: Storing the processed data into HDFS.
+	
+STORE employment1 INTO '/project/pigdata1/' USING PigStorage(',');
+STORE employment2 INTO '//project/pigdata1/' USING PigStorage(',');
+STORE employment3 INTO '/project/pigdata1/' USING PigStorage(',');
+
+
+SAMPLE OUTPUT:
+dump employment1 :
+
+(2, Children, Never married, Male, Nonfiler,476.21, Both parents present, United-States, Native- Born in the United States,0)
+(1, Children, Never married, Female, Nonfiler,3288.88, Mother only present, United-States, Native- Born in the United States,0)
+(12, Children, Never married, Male, Nonfiler,766.28, Both parents present, United-States, Native- Born in the United States,0)
+(13, Children, Never married, Male, Nonfiler,61.23, Mother only present, United-States, Native- Born in the United States,0)
+(0, Children, Never married, Male, Nonfiler,1936.23, Both parents present, United-States, Native- Born in the United States,0)
+
+
+
+
+
+
+dump  employment2 :
+(18, High school graduate, Never married, Female, Nonfiler,2876.96, Not in universe, United-States, Native- Born in the United States,0)
+(37, High school graduate, Married-civilian spouse present, Female, Joint both under 65,756.74, Not in universe, United-States, Native- Born in the United States,52)
+(29, Associates degree-academic program, Married-civilian spouse present, Male, Joint both under 65,1120.32, Not in universe, United-States, Native- Born in the United States,52)
+(43, Some college but no degree, Divorced, Male, Single,1691.39, Not in universe, United-States, Native- Born in the United States,52)
+(41, High school graduate, Married-civilian spouse present, Female, Joint both under 65,565.73, Not in universe, United-States, Native- Born in the United States,26)
+(38, 11th grade, Married-civilian spouse present, Female, Joint both under 65,1397.09, Not in universe, United-States, Native- Born in the United States,52)
+
+dump employment3 :
+(70, High school graduate, Married-civilian spouse present, Female, Nonfiler,1519.16, Not in universe, United-States, Native- Born in the United States,0)
+(74, Some college but no degree, Widowed, Female, Single,236.42, Not in universe, United-States, Native- Born in the United States,0)
+(69, 7th and 8th grade, Married-civilian spouse present, Male, Nonfiler,832.43, Not in universe, United-States, Native- Born in the United States,0)
+(77, Bachelors degree(BA AB BS), Married-civilian spouse present, Female, Joint both 65+,989.82, Not in universe, United-States, Native- Born in the United States,0)
+(79, High school graduate, Married-civilian spouse present, Female, Joint both 65+,868.88, Not in universe, United-States, Native- Born in the United States,0)
+(80, High school graduate, Widowed, Male, Nonfiler,490.29, Not in universe, United-States, Native- Born in the United States,0)
+
+
+Job 3: Finding Number of Unemployed Graduates.
+Tool Used: Apache Pig.
+
+Step 1: Loading the Data into Pig Grunt Shell in mapreduce mode.
+
+employment = load '/project/pigdata1/part-m-00000' using PigStorage(',') as (Age:int, Education:chararray, MaritalStatus:chararray, Gender:chararray, TaxFilerStatus:chararray, Income:double, Parents:chararray, CountryOfBirth:chararray, Citizenship:chararray, WeeksWorked:int); 
+
+Step 2: Filtering employent data with weeksworked as 0 and  education as  ' Bachelors degree(BA AB BS)'; 
+
+unemployed = filter employment by WeeksWorked == 0 and Education == ' Bachelors degree(BA AB BS)'; 
+
+Step 3: Grouping the data with the education column.
+          
+            graduates = group unemployed by $1;
+
+Step 4: Counting number of unemployed graduates.
+
+             count = foreach countofgrad generate group, COUNT(unemployed.$1);
+
+
+OUTPUT:
+dump count :
+
+( Bachelors degree(BA AB BS),25)
+
+Job 4: Finding number of citizens getting retired in next 3 years in gender wise.
+Tool Used: Apache Hive.
+
+Step 1: Creating database in Hive and using it.
+
+create database project;
+
+use project;
+
+Step 2: Adding jar file for Hive process.
+
+	add jar /usr/local/hive/hcatalog/share/hcatalog/hive-hcatalog-core-1.2.1.jar;
+
+Step 3: Creating tables inside the Project database.
+
+create external table employment (Age int, Education string, MaritalStatus string, Gender string, TaxFilerStatus string, Income double, Parents string, CountryofBirth string, Citizenship string, WeeksWorked int) row format serde 'org.apache.hive.hcatalog.data.JsonSerDe';
+
+Step 4: Loading data into the created hive table.
+
+load data local inpath '/home/magesh/Documents/Mainproject/sample.dat' overwrite into table employment;
+
+Step 5: Writing hive query to find the citizens retiring after three years.
+
+select Gender, count(*) from employment WHERE weeksworked  != 0 and Age == 62 group by Gender;
+
+OUTPUT:
+
+        Female 5
+         Male 7
+
+
+
+
+
+Job 5: Calculating PF for employed citizens.
+
+Step1: Writing Mapreduce code for calculating PF of all citizen.
+
+import java.io.IOException;
+import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.io.DoubleWritable;
+import org.apache.hadoop.io.Text;
+import org.apache.hadoop.mapreduce.Job;
+import org.apache.hadoop.io.LongWritable;
+import org.apache.hadoop.mapreduce.Mapper;
+import org.apache.hadoop.conf.Configuration;
+import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
+import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
+
+
+//73, High school graduate, Widowed, Female, Nonfiler,1700.09, Not in universe, 
+//United-States, Native- Born in the United States,0
+
+public class pfcalculation
+{
+	public static class pfMapper extends Mapper<LongWritable,Text,Text,DoubleWritable> 
+	{
+		private DoubleWritable pf1 = new DoubleWritable();
+		long mykey = 0;
+		
+		public void map(LongWritable key, Text value, Context context)throws IOException, InterruptedException 
+		{
+			String[] line = value.toString().split(",");
+			double income = (Double.parseDouble(line[5]));
+			double PIA = (income*0.5);
+            double PF = ((PIA*12.4)/100);
+			String filer = line[3];
+			Text gen = new Text();
+			gen.set(filer);
+			pf1.set(PF);
+			
+			context.write(gen, pf1);
+		}
+		
+		}
+			
+	public static void main(String[] args) throws Exception 
+	{
+		
+		Configuration conf = new Configuration();
+		conf.set("mapred.textoutputformat.separator", ",");
+		Job job = Job.getInstance(conf);
+	    job.setJarByClass(pfcalculation.class);
+	    job.setJobName("PF Calculation");
+		job.setMapperClass(pfMapper.class);
+	    job.setNumReduceTasks(0);
+		job.setOutputKeyClass(Text.class);
+		job.setOutputValueClass(DoubleWritable.class);
+		FileInputFormat.addInputPath(job, new Path(args[0]));
+	    FileOutputFormat.setOutputPath(job, new Path(args[1]));
+	    System.exit(job.waitForCompletion(true) ? 0 : 1);		
+	}	
+	}
+
+Step2 : Running jar file in hadoop using jar command.
+
+Output : 
+
+Male,47.509359999999994
+ Male,103.59146000000001
+ Male,114.33172
+ Female,67.89186
+ Male,22.5742
+ Female,108.39832
+ Male,129.3878
+ Male,3.7962599999999997
+ Male,159.3617
+ Male,88.70402
+ Male,111.45306000000001
+ Female,101.30242
+ Male,138.89984
+ Female,178.37152000000003
+ Female,94.23442000000001
+ Female,46.917880000000004  
+
